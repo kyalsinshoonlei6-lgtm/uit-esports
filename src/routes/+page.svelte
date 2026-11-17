@@ -53,10 +53,14 @@
     | 'dashboard';
 
   // =========================================================
-  // EXCLUSIVE MASTER ADMIN LOCK (ONLY YOUR ACCOUNT CAN BE ADMIN)
+  // EXCLUSIVE 2-ADMIN LIST & CONSTANTS
   // =========================================================
-  const MASTER_ADMIN_ID = '6dedc981-fe9b-45d4-83e5-103e6d607420';
-  const MASTER_ADMIN_EMAIL = 'kyalsinshoonlei6@gmail.com';
+  const ADMIN_EMAILS = [
+    'kyalsinshoonlei6@gmail.com',
+    'fullbringer932@gmail.com'
+  ];
+  const MASTER_ADMIN_STUDENT_ID = 'TNT-2617';
+  const MASTER_ADMIN_NAME = 'Kyal Sin';
 
   let currentRole = $state<Role>('member');
   let activeTab = $state<Tab>('hub');
@@ -176,13 +180,13 @@
   const quickEmojis = ['🔥', '⚔️', '🏆', 'GG', '👍', '🎮'];
 
   // ==========================================
-  // STRICT SINGLE-ADMIN + MULTI-ROLE STATES
+  // STRICT ADMIN + MULTI-ROLE STATES
   // ==========================================
   let isSystemAdmin = $derived(
     Boolean(
       currentUser &&
-        (currentUser.id === MASTER_ADMIN_ID ||
-          currentUser.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())
+        (ADMIN_EMAILS.includes(currentUser.email?.toLowerCase() || '') ||
+          profileStudentId.trim().toUpperCase() === MASTER_ADMIN_STUDENT_ID)
     )
   );
   let isAnySquadLeader = $derived(mySquads.length > 0);
@@ -245,10 +249,15 @@
     return '';
   }
 
-  // Only show ADMIN badge for the 1 true Master Admin ID
   function getPlayerRoleBadges(playerObj: any) {
     const badges: { label: string; classes: string }[] = [];
-    if (playerObj.id === MASTER_ADMIN_ID) {
+    const isThisPlayerMaster =
+      playerObj.role === 'admin' ||
+      ADMIN_EMAILS.includes(playerObj.email?.toLowerCase() || '') ||
+      playerObj.student_id?.trim().toUpperCase() === MASTER_ADMIN_STUDENT_ID ||
+      playerObj.full_name?.trim().toLowerCase() === MASTER_ADMIN_NAME.toLowerCase();
+
+    if (isThisPlayerMaster) {
       badges.push({
         label: '👑 ADMIN',
         classes: 'bg-amber-500/20 text-amber-300 border-amber-500/40'
@@ -331,9 +340,6 @@
       .subscribe();
   }
 
-  // ==========================================
-  // 0.5 ONE SQUAD PER GAME VALIDATION HELPERS
-  // ==========================================
   function getActiveSquadForGame(gType: string) {
     const led = mySquads.find((s) => s.game_type === gType);
     if (led) return led;
@@ -352,9 +358,6 @@
     );
   }
 
-  // ==========================================
-  // 1. AUTHENTICATION, PROFILE & STRICT ADMIN LOCK
-  // ==========================================
   async function checkUserAndRole() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -371,10 +374,6 @@
         currentRole = 'member';
         return;
       }
-
-      const isMaster =
-        user.id === MASTER_ADMIN_ID ||
-        user.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
 
       profileFullName =
         user.user_metadata?.full_name || user.email?.split('@')[0] || 'UIT Player';
@@ -405,13 +404,17 @@
           profilePubgId = profile.pubg_id || '';
           profileFootballPos = profile.football_position || '';
 
+          const isMaster =
+            ADMIN_EMAILS.includes(user.email?.toLowerCase() || '') ||
+            profileStudentId.trim().toUpperCase() === MASTER_ADMIN_STUDENT_ID ||
+            profileFullName.trim().toLowerCase() === MASTER_ADMIN_NAME.toLowerCase();
+
           if (isMaster) {
             currentRole = 'admin';
             if (profile.role !== 'admin') {
               await supabase.from('profiles').update({ role: 'admin' }).eq('id', user.id);
             }
           } else {
-            // Non-master accounts can NEVER be 'admin'
             const properRole: Role = isAlreadyLeader ? 'leader' : 'member';
             currentRole = properRole;
             if (profile.role !== properRole) {
@@ -419,6 +422,7 @@
             }
           }
         } else {
+          const isMaster = ADMIN_EMAILS.includes(user.email?.toLowerCase() || '');
           const assignedRole: Role = isMaster
             ? 'admin'
             : isAlreadyLeader
@@ -434,7 +438,6 @@
         }
       } catch (e) {
         console.warn('Profile check warning:', e);
-        currentRole = isMaster ? 'admin' : isAlreadyLeader ? 'leader' : 'member';
       }
     } catch (err) {
       console.error('Error checking user:', err);
@@ -455,7 +458,7 @@
       if (normalizedStudentId) {
         const taken = await isStudentIdTaken(normalizedStudentId, currentUser.id);
         if (taken) {
-          errorMessage = `Student ID "${normalizedStudentId}" ကို အခြားကစားသမားတစ်ဦး အသုံးပြုထားပြီးသား ဖြစ်ပါသည်။ တူညီ၍ မရပါ။`;
+          errorMessage = `Student ID "${normalizedStudentId}" ကို အခြားကစားသမားတစ်ဦး အသုံးပြုထားပြီးသား ဖြစ်ပါသည်။`;
           loadingAction = false;
           return;
         }
@@ -477,14 +480,7 @@
         role: updatedRole
       });
 
-      if (error) {
-        if (error.message?.includes('unique') || error.code === '23505') {
-          throw new Error(
-            `Student ID "${normalizedStudentId}" ကို အခြားကစားသမားတစ်ဦး အသုံးပြုထားပြီးသား ဖြစ်ပါသည်။`
-          );
-        }
-        throw error;
-      }
+      if (error) throw error;
 
       profileStudentId = normalizedStudentId;
       currentRole = updatedRole;
@@ -525,7 +521,7 @@
         if (normalizedSid) {
           const taken = await isStudentIdTaken(normalizedSid);
           if (taken) {
-            errorMessage = `Student ID "${normalizedSid}" ကို အခြားကျောင်းသားတစ်ဦး အသုံးပြုထားပြီးသား ဖြစ်ပါသည်။ မတူညီသော ID ထည့်သွင်းပါ။`;
+            errorMessage = `Student ID "${normalizedSid}" ကို အခြားကျောင်းသားတစ်ဦး အသုံးပြုထားပြီးသား ဖြစ်ပါသည်။`;
             loadingAction = false;
             return;
           }
@@ -541,11 +537,11 @@
         if (error) throw error;
 
         if (data.user) {
-          const initialRole: Role =
-            data.user.id === MASTER_ADMIN_ID ||
-            data.user.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()
-              ? 'admin'
-              : 'member';
+          const initialRole: Role = ADMIN_EMAILS.includes(
+            data.user.email?.toLowerCase() || ''
+          )
+            ? 'admin'
+            : 'member';
           try {
             await supabase.from('profiles').upsert({
               id: data.user.id,
@@ -560,7 +556,7 @@
 
         if (data.user && !data.session) {
           successMessage =
-            'အကောင့်ဖွင့်ခြင်း အောင်မြင်ပါသည်! သင့် Email (Inbox သို့မဟုတ် Spam) သို့ ပို့ထားသော Verification Link ကို နှိပ်ပြီးမှ Sign In ပြန်ဝင်ပေးပါ။';
+            'အကောင့်ဖွင့်ခြင်း အောင်မြင်ပါသည်! သင့် Email သို့ ပို့ထားသော Verification Link ကို နှိပ်ပါ။';
           authPassword = '';
           isLoginMode = true;
         } else {
@@ -574,14 +570,7 @@
         }
       }
     } catch (err: any) {
-      if (err.message?.includes('Email not confirmed')) {
-        errorMessage =
-          'သင့် Email ကို အတည်မပြုရသေးပါ။ Email ထဲသို့ ပို့ထားသော Verification Link ကို အရင်နှိပ်ပေးပါ။';
-      } else if (err.message?.includes('Invalid login credentials')) {
-        errorMessage = 'Email သို့မဟုတ် Password မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပေးပါ။';
-      } else {
-        errorMessage = err.message || 'Authentication failed.';
-      }
+      errorMessage = err.message || 'Authentication failed.';
     } finally {
       loadingAction = false;
     }
@@ -603,9 +592,6 @@
     showToast('Signed out successfully.', 'info');
   }
 
-  // ==========================================
-  // 2. DATA FETCHING FUNCTIONS
-  // ==========================================
   async function fetchSquads() {
     loadingSquads = true;
     try {
@@ -704,14 +690,9 @@
       if (!error && data) {
         globalMessages = data;
       }
-    } catch {
-      // Safe fallback
-    }
+    } catch {}
   }
 
-  // ==========================================
-  // 2.2 DIRECT MESSAGES (1-ON-1 PLAYER CHAT)
-  // ==========================================
   async function fetchDirectMessages() {
     if (!currentUser) return;
     try {
@@ -726,9 +707,7 @@
       if (!error && data) {
         directMessages = data;
       }
-    } catch {
-      // Safe fallback
-    }
+    } catch {}
   }
 
   function startDirectChatWith(targetPlayerId: string) {
@@ -844,9 +823,6 @@
     }
   }
 
-  // ==========================================
-  // 2.5 "MY SQUAD" ROOM: ROSTER, LEADER CONTROLS & CHAT
-  // ==========================================
   async function fetchMySquadDetails(squadId: string) {
     if (!squadId) return;
     loadingMySquadRoom = true;
@@ -885,10 +861,7 @@
         .eq('id', squadObj.id);
 
       if (error) throw error;
-      showToast(
-        nextState ? 'Squad recruitment opened!' : 'Squad recruitment closed.',
-        'info'
-      );
+      showToast(nextState ? 'Squad recruitment opened!' : 'Squad recruitment closed.', 'info');
       await Promise.all([fetchSquads(), fetchDashboardData()]);
     } catch (err: any) {
       showToast('Error updating recruitment: ' + err.message, 'error');
@@ -915,7 +888,7 @@
   function handleDisbandSquad(squadId: string, squadNameStr: string) {
     askConfirm(
       'Disband Squad',
-      `Are you sure you want to permanently disband "${squadNameStr}"? All roster and match records for this squad will be removed.`,
+      `Are you sure you want to permanently disband "${squadNameStr}"?`,
       async () => {
         try {
           const { error } = await supabase.from('squads').delete().eq('id', squadId);
@@ -1034,9 +1007,6 @@
     );
   }
 
-  // ==========================================
-  // 3. SQUAD & RECRUITMENT ACTIONS (WITH 1 SQUAD PER GAME LIMIT)
-  // ==========================================
   async function handleCreateSquad(e: SubmitEvent) {
     e.preventDefault();
 
@@ -1052,7 +1022,7 @@
 
     const existingSquadInGame = getActiveSquadForGame(gameType);
     if (existingSquadInGame) {
-      errorMessage = `သင်သည် ${gameType} အတွက် "${existingSquadInGame.name}" အသင်းတွင် ပါဝင်ထားပြီးသား ဖြစ်ပါသည်။ ဂိမ်းတစ်ခုလျှင် Squad တစ်ခုသာ ဝင်ရောက်/တည်ထောင်ခွင့် ရှိပါသည်။`;
+      errorMessage = `သင်သည် ${gameType} အတွက် "${existingSquadInGame.name}" အသင်းတွင် ပါဝင်ထားပြီးသား ဖြစ်ပါသည်။`;
       return;
     }
 
@@ -1107,19 +1077,13 @@
 
     const activeSquadInSameGame = getActiveSquadForGame(squadGameType);
     if (activeSquadInSameGame) {
-      showToast(
-        `သင်သည် ${squadGameType} ဂိမ်းအတွက် "${activeSquadInSameGame.name}" အသင်းတွင် ရှိနေပြီးသားဖြစ်ပါသည် (ဂိမ်းတစ်ခုလျှင် Squad ၁ ခုသာ ဝင်နိုင်ပါသည်)။`,
-        'error'
-      );
+      showToast(`သင်သည် ${squadGameType} ဂိမ်းအတွက် အသင်းတွင် ရှိနေပြီးသားဖြစ်ပါသည်။`, 'error');
       return;
     }
 
     const pendingInSameGame = getPendingRequestForGame(squadGameType);
     if (pendingInSameGame) {
-      showToast(
-        `သင်သည် ${squadGameType} အတွက် "${pendingInSameGame.squads?.name}" သို့ Request ပို့ထားပြီးသား ဖြစ်ပါသည်။`,
-        'error'
-      );
+      showToast(`သင်သည် ${squadGameType} အတွက် Request ပို့ထားပြီးသား ဖြစ်ပါသည်။`, 'error');
       return;
     }
 
@@ -1152,10 +1116,7 @@
           .eq('game_type', targetGame);
 
         if (applicantLed && applicantLed.length > 0) {
-          showToast(
-            `ဤကစားသမားသည် ${targetGame} တွင် "${applicantLed[0].name}" အသင်း၏ Leader ဖြစ်နေသောကြောင့် လက်ခံ၍မရပါ။`,
-            'error'
-          );
+          showToast(`ဤကစားသမားသည် ${targetGame} တွင် အသင်း Leader ဖြစ်နေပါသည်။`, 'error');
           return;
         }
 
@@ -1170,10 +1131,7 @@
         );
 
         if (alreadyInSameGame) {
-          showToast(
-            `ဤကစားသမားသည် အခြား ${targetGame} Squad တစ်ခုသို့ ဝင်ရောက်ပြီးသား ဖြစ်နေပါသည်။`,
-            'error'
-          );
+          showToast(`ဤကစားသမားသည် အခြား ${targetGame} Squad သို့ ဝင်ရောက်ပြီးသား ဖြစ်ပါသည်။`, 'error');
           return;
         }
       }
@@ -1194,9 +1152,6 @@
     }
   }
 
-  // ==========================================
-  // 4. SCRIM / MATCHMAKING ACTIONS
-  // ==========================================
   async function handleCreateScrim(e: SubmitEvent) {
     e.preventDefault();
 
@@ -1298,9 +1253,6 @@
     }
   }
 
-  // ==========================================
-  // 5. TOURNAMENT & RANDOM BRACKET ACTIONS
-  // ==========================================
   async function handleCreateTournament(e: SubmitEvent) {
     e.preventDefault();
     if (!tourneyTitle.trim() || !tourneyDeadline) return;
@@ -1377,10 +1329,7 @@
     );
 
     if (participants.length < 2) {
-      showToast(
-        'Random ပွဲစဉ်ဇယား ဆွဲရန် အနည်းဆုံး အသင်း (၂) သင်း စာရင်းသွင်းထားရပါမည်။',
-        'error'
-      );
+      showToast('Random ပွဲစဉ်ဇယား ဆွဲရန် အနည်းဆုံး အသင်း (၂) သင်း လိုအပ်ပါသည်။', 'error');
       return;
     }
 
@@ -1417,7 +1366,7 @@
         .update({ status: 'ongoing' })
         .eq('id', tournamentId);
 
-      showToast('Random ပွဲစဉ်ဇယား (Bracket) ထုတ်ပေးပြီးပါပြီ!', 'success');
+      showToast('Random ပွဲစဉ်ဇယား ထုတ်ပေးပြီးပါပြီ!', 'success');
       await fetchTournaments();
     } catch (err: any) {
       showToast('Error generating bracket: ' + err.message, 'error');
@@ -1450,16 +1399,13 @@
         .eq('id', tournamentId);
 
       if (error) throw error;
-      showToast('🏆 Official Tournament Champion declared!', 'success');
+      showToast('🏆 Tournament Champion declared!', 'success');
       await fetchTournaments();
     } catch (err: any) {
       showToast('Error declaring champion: ' + err.message, 'error');
     }
   }
 
-  // ==========================================
-  // 6. UI HELPERS & DERIVED FILTERS
-  // ==========================================
   function openCreateModal() {
     if (!currentUser) {
       showAuthModal = true;
@@ -1575,16 +1521,10 @@
   );
 </script>
 
-<!-- ========================================================= -->
-<!-- UNIFIED DARK NEON ESPORTS DASHBOARD SHELL (SIDEBAR + MAIN) -->
-<!-- ========================================================= -->
 <div class="min-h-screen bg-[#06080f] text-slate-100 font-sans selection:bg-purple-500 selection:text-white flex">
-
-  <!-- AMBIENT NEON BACKGROUND GLOWS -->
   <div class="fixed top-0 left-64 w-125 h-87.5 bg-purple-600/10 rounded-full blur-[130px] pointer-events-none z-0"></div>
   <div class="fixed bottom-0 right-10 w-105 h-80 bg-emerald-500/8 rounded-full blur-[130px] pointer-events-none z-0"></div>
 
-  <!-- TOAST NOTIFICATION STACK -->
   <div class="fixed bottom-5 right-5 z-100 space-y-2.5 max-w-sm w-full pointer-events-none px-4">
     {#each toasts as t (t.id)}
       <div class="pointer-events-auto flex items-center justify-between px-4 py-3 rounded-2xl border backdrop-blur-xl shadow-2xl transition-all {t.type === 'success' ? 'bg-slate-900/95 border-emerald-500/50 text-emerald-300 shadow-emerald-500/10' : t.type === 'error' ? 'bg-slate-900/95 border-red-500/50 text-red-300 shadow-red-500/10' : 'bg-slate-900/95 border-purple-500/50 text-purple-300 shadow-purple-500/10'}">
@@ -1596,12 +1536,8 @@
     {/each}
   </div>
 
-  <!-- ========================================================= -->
-  <!-- DESKTOP SIDEBAR NAVIGATION -->
-  <!-- ========================================================= -->
   <aside class="hidden lg:flex flex-col w-64 bg-[#090c15]/95 border-r border-purple-500/15 sticky top-0 h-screen z-40 justify-between p-5 shrink-0">
     <div class="space-y-6">
-      <!-- Brand Logo -->
       <button
         type="button"
         onclick={() => (activeTab = 'hub')}
@@ -1621,7 +1557,6 @@
         </div>
       </button>
 
-      <!-- Navigation Links -->
       <div class="space-y-1">
         <span class="px-3 text-[10px] font-extrabold uppercase tracking-widest text-slate-500 block mb-1.5">
           Main Arena
@@ -1752,14 +1687,13 @@
       </div>
     </div>
 
-    <!-- Sidebar Footer Quick CTA -->
     <div class="bg-linear-to-br from-purple-950/60 to-slate-900/90 border border-purple-500/25 rounded-2xl p-4 space-y-3">
       <div class="flex items-center space-x-2">
         <Sparkles class="w-4 h-4 text-purple-400" />
-        <span class="text-xs font-extrabold text-white">Multi-Role Enabled</span>
+        <span class="text-xs font-extrabold text-white">2-Admin System Enabled</span>
       </div>
       <p class="text-[11px] text-slate-400 leading-relaxed">
-        1 Squad per game category. Hold Leader & Member roles across games.
+        Exclusive control for Kyal Sin & Fullbringer932.
       </p>
       <button
         type="button"
@@ -1771,12 +1705,7 @@
     </div>
   </aside>
 
-  <!-- ========================================================= -->
-  <!-- MAIN CONTENT WRAPPER (TOP HEADER + VIEWPORT) -->
-  <!-- ========================================================= -->
   <div class="flex-1 flex flex-col min-w-0 relative z-10">
-
-    <!-- TOP BAR -->
     <header class="h-20 border-b border-slate-800/80 bg-[#090c15]/85 backdrop-blur-xl sticky top-0 z-30 px-4 md:px-8 flex items-center justify-between gap-4">
       <div class="flex items-center space-x-3">
         <button
@@ -1804,10 +1733,8 @@
         </div>
       </div>
 
-      <!-- Right Controls: Notifications, Multi-Role Profile Badge & Auth -->
       <div class="flex items-center space-x-3">
         {#if currentUser}
-          <!-- Notification Center Bell -->
           <div class="relative">
             <button
               type="button"
@@ -1861,7 +1788,6 @@
             {/if}
           </div>
 
-          <!-- Profile & Multi-Role Badges -->
           <button
             type="button"
             onclick={openProfileModal}
@@ -1875,7 +1801,6 @@
               <span class="text-[10px] font-mono text-purple-300 hidden md:inline">({profileStudentId})</span>
             {/if}
 
-            <!-- Multi-Role Badges Display -->
             <div class="flex items-center space-x-1">
               {#if isSystemAdmin}
                 <span class="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold uppercase text-[10px]">
@@ -1920,7 +1845,6 @@
       </div>
     </header>
 
-    <!-- MOBILE NAVIGATION BAR -->
     {#if mobileMenuOpen}
       <div class="lg:hidden bg-[#090c15] border-b border-purple-500/20 px-4 py-3 grid grid-cols-2 gap-2 z-30">
         {#each [['hub', 'Game Hub'], ['squads', 'Squads'], ['mysquad', 'My Squad'], ['scrims', 'Scrims'], ['tournaments', 'Tournaments'], ['members', 'Active Players'], ['messages', 'Direct Chat'], ['allchat', 'All Chat'], ['dashboard', 'Dashboard']] as [key, label]}
@@ -1940,18 +1864,9 @@
       </div>
     {/if}
 
-    <!-- ========================================================= -->
-    <!-- MAIN PAGE CONTENT -->
-    <!-- ========================================================= -->
     <main class="max-w-7xl w-full mx-auto px-4 md:px-8 py-8 flex-1">
-
-      <!-- ================================= -->
-      <!-- 1. GAME HUB -->
-      <!-- ================================= -->
       {#if activeTab === 'hub'}
         <div class="space-y-10">
-
-          <!-- HERO BANNER WITH PRESERVED /background.jpg -->
           <div class="relative overflow-hidden rounded-3xl border border-purple-500/30 p-8 md:p-14 shadow-2xl shadow-purple-950/20">
             <img
               src="/background.jpg"
@@ -2001,7 +1916,6 @@
             </div>
           </div>
 
-          <!-- QUICK ECOSYSTEM STATS -->
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="bg-[#0b0f1a] border border-slate-800/80 rounded-2xl p-5">
               <span class="text-xs text-slate-400 font-semibold block">Active Squads</span>
@@ -2021,7 +1935,6 @@
             </div>
           </div>
 
-          <!-- FEATURED GAME CATEGORIES -->
           <div class="space-y-4">
             <div class="flex justify-between items-center">
               <h2 class="text-2xl font-extrabold text-white tracking-tight">
@@ -2037,7 +1950,6 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <!-- 1. MLBB CARD -->
               <div class="group relative overflow-hidden rounded-3xl bg-[#0b0f1a] border border-slate-800/90 hover:border-purple-500/60 transition-all duration-300 flex flex-col justify-between shadow-xl">
                 <div class="relative h-44 overflow-hidden">
                   <img
@@ -2046,7 +1958,6 @@
                     class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 opacity-65"
                   />
                   <div class="absolute inset-0 bg-linear-to-t from-[#0b0f1a] via-[#0b0f1a]/40 to-transparent"></div>
-
                   <div class="absolute bottom-3 left-6 flex items-center space-x-3">
                     <img
                       src="/mlbb2.jpg"
@@ -2076,7 +1987,6 @@
                 </div>
               </div>
 
-              <!-- 2. PUBG MOBILE CARD -->
               <div class="group relative overflow-hidden rounded-3xl bg-[#0b0f1a] border border-slate-800/90 hover:border-purple-500/60 transition-all duration-300 flex flex-col justify-between shadow-xl">
                 <div class="relative h-44 overflow-hidden">
                   <img
@@ -2085,7 +1995,6 @@
                     class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 opacity-65"
                   />
                   <div class="absolute inset-0 bg-linear-to-t from-[#0b0f1a] via-[#0b0f1a]/40 to-transparent"></div>
-
                   <div class="absolute bottom-3 left-6 flex items-center space-x-3">
                     <img
                       src="/pubg.jpg"
@@ -2115,7 +2024,6 @@
                 </div>
               </div>
 
-              <!-- 3. FOOTBALL / FUTSAL CARD -->
               <div class="group relative overflow-hidden rounded-3xl bg-[#0b0f1a] border border-slate-800/90 hover:border-emerald-500/60 transition-all duration-300 flex flex-col justify-between shadow-xl">
                 <div class="relative h-44 overflow-hidden">
                   <img
@@ -2124,7 +2032,6 @@
                     class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 opacity-65"
                   />
                   <div class="absolute inset-0 bg-linear-to-t from-[#0b0f1a] via-[#0b0f1a]/40 to-transparent"></div>
-
                   <div class="absolute bottom-3 left-6 flex items-center space-x-3">
                     <img
                       src="https://img.icons8.com/color/96/football2.png"
@@ -2156,10 +2063,6 @@
             </div>
           </div>
         </div>
-
-      <!-- ================================= -->
-      <!-- 2. SQUADS & RECRUITMENT -->
-      <!-- ================================= -->
       {:else if activeTab === 'squads'}
         <div class="space-y-8">
           <div class="bg-[#0b0f1a] border border-slate-800/90 p-6 rounded-3xl space-y-4">
@@ -2383,10 +2286,6 @@
             </div>
           {/if}
         </div>
-
-      <!-- ================================= -->
-      <!-- 2.5 MY SQUAD HEADQUARTERS -->
-      <!-- ================================= -->
       {:else if activeTab === 'mysquad'}
         {@const currentSquadObj = activeMySquadsList.find((s) => s.id === selectedMySquadId)}
         {@const isLeaderOfThisSquad =
@@ -2457,8 +2356,6 @@
             </div>
           {:else if currentSquadObj}
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-              <!-- LEFT COLUMN: SQUAD INFO, CONTEXT ROLE CONTROLS & ROSTER -->
               <div class="bg-[#0b0f1a] border border-slate-800/90 rounded-3xl p-6 flex flex-col justify-between space-y-6">
                 <div class="space-y-6">
                   <div class="bg-slate-950/90 border border-slate-800 p-5 rounded-2xl space-y-3">
@@ -2555,7 +2452,6 @@
                     {/if}
                   </div>
 
-                  <!-- Squad Roster -->
                   <div class="space-y-3">
                     <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-400">
                       Squad Roster ({squadRoster.length + 1} Players)
@@ -2627,7 +2523,6 @@
                   </div>
                 </div>
 
-                <!-- Context-Specific Bottom Action: Leader vs Member -->
                 <div class="pt-4 border-t border-slate-800">
                   {#if isLeaderOfThisSquad}
                     <button
@@ -2653,7 +2548,6 @@
                 </div>
               </div>
 
-              <!-- RIGHT COLUMN (2 COLS): REALTIME SQUAD CHAT -->
               <div class="lg:col-span-2 bg-[#0b0f1a] border border-slate-800/90 rounded-3xl p-6 flex flex-col justify-between h-140">
                 <div class="flex items-center justify-between border-b border-slate-800 pb-4">
                   <div class="flex items-center space-x-2.5">
@@ -2675,7 +2569,6 @@
                     <div class="text-center py-20 space-y-2">
                       <MessageSquare class="w-10 h-10 text-slate-700 mx-auto" />
                       <p class="text-sm font-bold text-slate-400">No messages in squad chat yet</p>
-                      <p class="text-xs text-slate-500">Say hello to your teammates below!</p>
                     </div>
                   {:else}
                     {#each squadMessages as msg (msg.id)}
@@ -2723,14 +2616,9 @@
                   </div>
                 </form>
               </div>
-
             </div>
           {/if}
         </div>
-
-      <!-- ================================= -->
-      <!-- 3. SCRIMS & MATCHMAKING -->
-      <!-- ================================= -->
       {:else if activeTab === 'scrims'}
         <div class="space-y-8">
           <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#0b0f1a] border border-slate-800/90 p-6 rounded-3xl">
@@ -2857,10 +2745,6 @@
             </div>
           {/if}
         </div>
-
-      <!-- ================================= -->
-      <!-- 4. TOURNAMENTS & RANDOM BRACKETS -->
-      <!-- ================================= -->
       {:else if activeTab === 'tournaments'}
         <div class="space-y-8">
           <div class="bg-[#0b0f1a] border border-slate-800/90 p-6 rounded-3xl space-y-4">
@@ -3082,10 +2966,6 @@
             </div>
           {/if}
         </div>
-
-      <!-- ================================= -->
-      <!-- 5. ACTIVE MEMBERS DIRECTORY -->
-      <!-- ================================= -->
       {:else if activeTab === 'members'}
         <div class="space-y-8">
           <div class="bg-[#0b0f1a] border border-slate-800/90 p-6 rounded-3xl space-y-4">
@@ -3154,7 +3034,6 @@
                         </div>
                       </div>
 
-                      <!-- Multi-Role Badges for Directory Card -->
                       <div class="flex flex-wrap justify-end gap-1">
                         {#each getPlayerRoleBadges(player) as b}
                           <span class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border {b.classes}">
@@ -3180,7 +3059,6 @@
                     </div>
                   </div>
 
-                  <!-- Direct Message Action Button -->
                   <div class="pt-2">
                     {#if currentUser && player.id === currentUser.id}
                       <button
@@ -3206,10 +3084,6 @@
             </div>
           {/if}
         </div>
-
-      <!-- ================================= -->
-      <!-- 5.5 DIRECT MESSAGES (1-ON-1 PLAYER CHAT) -->
-      <!-- ================================= -->
       {:else if activeTab === 'messages'}
         {@const activePartner = allProfiles.find((p) => p.id === selectedDmPartnerId)}
 
@@ -3227,8 +3101,6 @@
           </div>
         {:else}
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-155">
-
-            <!-- LEFT SIDEBAR: PLAYER CONVERSATION LIST -->
             <div class="bg-[#0b0f1a] border border-slate-800/90 rounded-3xl p-4 flex flex-col h-full">
               <div class="pb-3 border-b border-slate-800 space-y-2.5">
                 <h3 class="text-sm font-extrabold uppercase tracking-wider text-purple-300 px-1">
@@ -3287,18 +3159,13 @@
               </div>
             </div>
 
-            <!-- RIGHT AREA: 1-ON-1 CHAT WINDOW -->
             <div class="lg:col-span-2 bg-[#0b0f1a] border border-slate-800/90 rounded-3xl p-6 flex flex-col justify-between h-full">
               {#if !activePartner}
                 <div class="flex-1 flex flex-col items-center justify-center text-center space-y-3">
                   <Mail class="w-12 h-12 text-slate-700" />
                   <h4 class="text-base font-bold text-slate-300">Select a Player to Chat</h4>
-                  <p class="text-xs text-slate-500 max-w-xs">
-                    ဘယ်ဘက်စာရင်းမှ ကစားသမားတစ်ဦးကို ရွေးချယ်ပြီး သီးသန့် (1-on-1) စကားပြောနိုင်ပါသည်။
-                  </p>
                 </div>
               {:else}
-                <!-- Chat Partner Header -->
                 <div class="flex items-center justify-between border-b border-slate-800 pb-4">
                   <div class="flex items-center space-x-3">
                     <div class="w-10 h-10 rounded-xl bg-linear-to-br from-purple-600 to-violet-600 text-white font-black flex items-center justify-center text-sm">
@@ -3311,23 +3178,15 @@
                           {getUniquePlayerTag(activePartner)}
                         </span>
                       </div>
-                      <span class="text-[11px] text-slate-400">
-                        {#if activePartner.mlbb_id}MLBB: {activePartner.mlbb_id} {/if}
-                        {#if activePartner.pubg_id}• PUBG: {activePartner.pubg_id}{/if}
-                      </span>
                     </div>
                   </div>
                 </div>
 
-                <!-- Messages Stream -->
                 <div class="flex-1 overflow-y-auto py-4 space-y-3 pr-1">
                   {#if currentDmConversation.length === 0}
                     <div class="text-center py-20 space-y-2">
                       <p class="text-sm font-bold text-slate-400">
                         No messages with {activePartner.full_name} yet
-                      </p>
-                      <p class="text-xs text-slate-500">
-                        Send a direct message below to invite them or coordinate a match!
                       </p>
                     </div>
                   {:else}
@@ -3345,7 +3204,6 @@
                   {/if}
                 </div>
 
-                <!-- Input Form -->
                 <form onsubmit={handleSendDirectMessage} class="pt-3 border-t border-slate-800 space-y-2">
                   <div class="flex items-center space-x-1.5">
                     {#each quickEmojis as emoji}
@@ -3362,13 +3220,13 @@
                     <input
                       type="text"
                       bind:value={newDmText}
-                      placeholder="Message {activePartner.full_name} ({getUniquePlayerTag(activePartner)})..."
+                      placeholder="Message {activePartner.full_name}..."
                       maxlength="400"
                       class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
                     />
                     <button
                       type="submit"
-                      class="bg-linear-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-extrabold px-5 py-3 rounded-xl transition cursor-pointer flex items-center space-x-1.5"
+                      class="bg-linear-to-r from-purple-600 to-violet-600 text-white font-extrabold px-5 py-3 rounded-xl transition cursor-pointer flex items-center space-x-1.5"
                     >
                       <Send class="w-4 h-4" />
                       <span>Send</span>
@@ -3377,13 +3235,8 @@
                 </form>
               {/if}
             </div>
-
           </div>
         {/if}
-
-      <!-- ================================= -->
-      <!-- 6. ALL CHAT (GLOBAL COMMUNITY CHAT) -->
-      <!-- ================================= -->
       {:else if activeTab === 'allchat'}
         <div class="bg-[#0b0f1a] border border-slate-800/90 rounded-3xl p-6 flex flex-col justify-between h-155">
           <div class="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -3398,7 +3251,6 @@
                     LIVE
                   </span>
                 </h3>
-                <p class="text-xs text-slate-400">Find teammates, call for 5v5 rooms, or chat with campus players.</p>
               </div>
             </div>
           </div>
@@ -3408,7 +3260,6 @@
               <div class="text-center py-24 space-y-2">
                 <MessageSquare class="w-10 h-10 text-slate-700 mx-auto" />
                 <p class="text-sm font-bold text-slate-400">Welcome to UIT Global All Chat!</p>
-                <p class="text-xs text-slate-500">Start the conversation or post a recruitment call below.</p>
               </div>
             {:else}
               {#each globalMessages as msg (msg.id)}
@@ -3421,17 +3272,6 @@
                     {#if msg.profiles?.student_id}
                       <span class="text-[10px] font-mono text-purple-400">({msg.profiles.student_id})</span>
                     {/if}
-                    <span class="text-[10px] text-slate-500">
-                      {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <button
-                      type="button"
-                      onclick={() => (replyToMessage = msg)}
-                      class="opacity-0 group-hover:opacity-100 text-[10px] text-purple-400 hover:underline flex items-center space-x-0.5 cursor-pointer"
-                    >
-                      <Reply class="w-3 h-3" />
-                      <span>Reply</span>
-                    </button>
                   </div>
                   <div class="max-w-[75%] px-4 py-2.5 rounded-2xl text-sm {isMe ? 'bg-linear-to-r from-purple-600 to-violet-600 text-white font-semibold rounded-br-xs' : 'bg-slate-950 border border-slate-800 text-slate-200 rounded-bl-xs'}">
                     {msg.content}
@@ -3445,7 +3285,7 @@
             {#if replyToMessage}
               <div class="bg-slate-950 border border-purple-500/30 px-3 py-1.5 rounded-xl flex items-center justify-between text-xs">
                 <span class="text-slate-400 truncate">
-                  Replying to <strong class="text-purple-300">{replyToMessage.profiles?.full_name || 'Player'}</strong>: {replyToMessage.content}
+                  Replying to <strong class="text-purple-300">{replyToMessage.profiles?.full_name || 'Player'}</strong>
                 </span>
                 <button
                   type="button"
@@ -3473,13 +3313,13 @@
               <input
                 type="text"
                 bind:value={newGlobalMessage}
-                placeholder="Send a message to everyone in UIT Arena..."
+                placeholder="Send a message to everyone..."
                 maxlength="400"
                 class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
               />
               <button
                 type="submit"
-                class="bg-linear-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-extrabold px-6 py-3 rounded-xl transition cursor-pointer flex items-center space-x-1.5"
+                class="bg-linear-to-r from-purple-600 to-violet-600 text-white font-extrabold px-6 py-3 rounded-xl transition cursor-pointer flex items-center space-x-1.5"
               >
                 <Send class="w-4 h-4" />
                 <span>Send</span>
@@ -3487,10 +3327,6 @@
             </div>
           </form>
         </div>
-
-      <!-- ================================= -->
-      <!-- 7. SQUAD, PLAYER & ADMIN DASHBOARD -->
-      <!-- ================================= -->
       {:else if activeTab === 'dashboard'}
         <div class="space-y-8">
           <div class="bg-linear-to-r from-[#0b0f1a] via-purple-950/30 to-[#0b0f1a] border border-purple-500/30 p-8 rounded-3xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -3501,7 +3337,7 @@
                 </span>
                 {#if isSystemAdmin}
                   <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                    👑 System Admin (Exclusive)
+                    👑 System Admin (2-Admin Lock)
                   </span>
                 {/if}
                 {#if isAnySquadLeader}
@@ -3516,9 +3352,6 @@
                 {/if}
               </div>
               <h2 class="text-2xl font-extrabold text-white">Unified Command & Player Dashboard</h2>
-              <p class="text-slate-400 text-sm mt-1">
-                All your active roles work together seamlessly here.
-              </p>
             </div>
 
             <div class="flex flex-wrap gap-3">
@@ -3551,9 +3384,6 @@
             </div>
           </div>
 
-          <!-- ========================================== -->
-          <!-- ADMIN COMMAND CENTER (VISIBLE ONLY TO YOUR ACCOUNT) -->
-          <!-- ========================================== -->
           {#if isSystemAdmin}
             <div class="bg-[#0b0f1a] border-2 border-amber-500/40 rounded-3xl p-6 space-y-6 shadow-2xl shadow-amber-500/5">
               <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-4">
@@ -3562,9 +3392,9 @@
                     <ShieldAlert class="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 class="text-lg font-black text-white">Exclusive Admin Command Center 👑</h3>
+                    <h3 class="text-lg font-black text-white">2-Admin Command Center 👑</h3>
                     <p class="text-xs text-slate-400">
-                      Only your Master Admin account ({MASTER_ADMIN_EMAIL}) has access to this panel.
+                      Authorized System Admins: {ADMIN_EMAILS.join(' • ')}
                     </p>
                   </div>
                 </div>
@@ -3578,7 +3408,6 @@
               </div>
 
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Registered Players Inspection -->
                 <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
                   <h4 class="text-xs font-extrabold uppercase tracking-wider text-amber-400">
                     Registered Campus Players ({allProfiles.length})
@@ -3606,7 +3435,6 @@
                   </div>
                 </div>
 
-                <!-- Admin Squad Moderation -->
                 <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
                   <h4 class="text-xs font-extrabold uppercase tracking-wider text-amber-400">
                     All Campus Squads Moderation ({squads.length})
@@ -3740,13 +3568,9 @@
           </div>
         </div>
       {/if}
-
     </main>
   </div>
 
-  <!-- ================================= -->
-  <!-- CUSTOM CONFIRMATION DIALOG MODAL -->
-  <!-- ================================= -->
   {#if confirmDialog.open}
     <div class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-90 p-4">
       <div class="bg-[#0d121f] border border-purple-500/30 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl">
@@ -3775,9 +3599,6 @@
     </div>
   {/if}
 
-  <!-- ================================= -->
-  <!-- MODAL 0: PLAYER PROFILE & MULTI-ROLE BADGES (NO PUBLIC ADMIN TOGGLE) -->
-  <!-- ================================= -->
   {#if showProfileModal}
     <div class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div class="bg-[#0b0f1a] border border-purple-500/30 w-full max-w-lg rounded-3xl p-8 relative shadow-2xl my-8">
@@ -3940,9 +3761,6 @@
     </div>
   {/if}
 
-  <!-- ================================= -->
-  <!-- MODAL 1: CREATE SQUAD -->
-  <!-- ================================= -->
   {#if showCreateModal}
     {@const existingSquadForSelectedGame = getActiveSquadForGame(gameType)}
     <div class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
@@ -3968,7 +3786,7 @@
 
         {#if existingSquadForSelectedGame}
           <div class="bg-amber-500/10 border border-amber-500/40 text-amber-300 text-xs p-3.5 rounded-xl mb-4 leading-relaxed">
-            ⚠️ သင်သည် <strong>{gameType}</strong> အတွက် <strong>"{existingSquadForSelectedGame.name}"</strong> အသင်းတွင် ပါဝင်ထားပြီးသား ဖြစ်ပါသည်။ အခြား ဂိမ်းအမျိုးအစားကို ရွေးချယ်ပါ။
+            ⚠️ သင်သည် <strong>{gameType}</strong> အတွက် <strong>"{existingSquadForSelectedGame.name}"</strong> အသင်းတွင် ပါဝင်ထားပြီးသား ဖြစ်ပါသည်။
           </div>
         {/if}
 
@@ -3982,15 +3800,9 @@
               bind:value={gameType}
               class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:border-purple-500 outline-none cursor-pointer"
             >
-              <option value="MLBB">
-                MLBB (Mobile Legends) {getActiveSquadForGame('MLBB') ? '— [Already in Squad]' : ''}
-              </option>
-              <option value="PUBG">
-                PUBG Mobile {getActiveSquadForGame('PUBG') ? '— [Already in Squad]' : ''}
-              </option>
-              <option value="FOOTBALL">
-                Football / Futsal {getActiveSquadForGame('FOOTBALL') ? '— [Already in Squad]' : ''}
-              </option>
+              <option value="MLBB">MLBB (Mobile Legends)</option>
+              <option value="PUBG">PUBG Mobile</option>
+              <option value="FOOTBALL">Football / Futsal</option>
             </select>
           </div>
 
@@ -4019,7 +3831,7 @@
               required
               maxlength="500"
               rows="3"
-              placeholder="ဥပမာ - Mythic 25 stars+, Roamer အဓိကလိုသည်"
+              placeholder="ဥပမာ - Mythic 25 stars+"
               class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:border-purple-500 outline-none"
             ></textarea>
           </div>
@@ -4029,20 +3841,13 @@
             disabled={loadingAction || !!existingSquadForSelectedGame}
             class="w-full bg-linear-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-extrabold py-3.5 rounded-xl transition-all shadow-lg shadow-purple-600/25 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
-            {loadingAction
-              ? 'Creating Squad...'
-              : existingSquadForSelectedGame
-                ? `Already in ${gameType} Squad`
-                : 'Create Squad Now'}
+            {loadingAction ? 'Creating Squad...' : 'Create Squad Now'}
           </button>
         </form>
       </div>
     </div>
   {/if}
 
-  <!-- ================================= -->
-  <!-- MODAL 2: CHALLENGE SCRIM -->
-  <!-- ================================= -->
   {#if showScrimModal}
     <div class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
       <div class="bg-[#0b0f1a] border border-purple-500/30 w-full max-w-md rounded-3xl p-8 relative shadow-2xl">
@@ -4055,20 +3860,16 @@
         </button>
 
         <h3 class="text-2xl font-bold text-white mb-2">Challenge Scrim ⚔️</h3>
-        <p class="text-slate-400 text-sm mb-6">
-          သင်ဦးဆောင်သော အသင်းဖြင့် အခြားအသင်းများကို ချိန်းပွဲ စိန်ခေါ်ပါ။
-        </p>
-
         <form onsubmit={handleCreateScrim} class="space-y-5">
           <div>
             <label for="challengerSquad" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Your Squad (Challenger)
+              Your Squad
             </label>
             <select
               id="challengerSquad"
               bind:value={challengerSquadId}
               required
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-purple-500 cursor-pointer"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none cursor-pointer"
             >
               <option value="">-- Select Your Squad --</option>
               {#each mySquads as squad (squad.id)}
@@ -4085,7 +3886,7 @@
               id="opponentSquad"
               bind:value={opponentSquadId}
               required
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-purple-500 cursor-pointer"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none cursor-pointer"
             >
               <option value="">-- Select Opponent --</option>
               {#each squads as squad (squad.id)}
@@ -4098,20 +3899,20 @@
 
           <div>
             <label for="scheduledTime" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Scheduled Time (ချိန်းဆိုမည့်အချိန်)
+              Scheduled Time
             </label>
             <input
               id="scheduledTime"
               type="datetime-local"
               bind:value={scheduledTime}
               required
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-purple-500"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none"
             />
           </div>
 
           <button
             type="submit"
-            class="w-full bg-linear-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-extrabold py-3.5 rounded-xl transition-all shadow-lg shadow-purple-600/25 cursor-pointer"
+            class="w-full bg-linear-to-r from-purple-600 to-violet-600 text-white font-extrabold py-3.5 rounded-xl cursor-pointer"
           >
             Send Scrim Challenge
           </button>
@@ -4120,9 +3921,6 @@
     </div>
   {/if}
 
-  <!-- ================================= -->
-  <!-- MODAL 3: CREATE TOURNAMENT (ADMIN) -->
-  <!-- ================================= -->
   {#if showTourneyModal}
     <div class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
       <div class="bg-[#0b0f1a] border border-purple-500/30 w-full max-w-md rounded-3xl p-8 relative shadow-2xl">
@@ -4135,22 +3933,18 @@
         </button>
 
         <h3 class="text-2xl font-bold text-white mb-2">Create Official Tournament 🏆</h3>
-        <p class="text-slate-400 text-sm mb-6">
-          Admin အနေဖြင့် ကျောင်းတွင်းပြိုင်ပွဲအသစ်နှင့် စာရင်းပိတ်ချိန် သတ်မှတ်ပါ။
-        </p>
-
         <form onsubmit={handleCreateTournament} class="space-y-5">
           <div>
             <label for="tourneyTitle" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Tournament Title (ပြိုင်ပွဲအမည်)
+              Tournament Title
             </label>
             <input
               id="tourneyTitle"
               type="text"
               bind:value={tourneyTitle}
               required
-              placeholder="ဥပမာ - UIT Freshers MLBB Cup 2026"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-purple-500"
+              placeholder="UIT Freshers MLBB Cup"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none"
             />
           </div>
 
@@ -4163,22 +3957,22 @@
               bind:value={tourneyGameType}
               class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none cursor-pointer"
             >
-              <option value="MLBB">MLBB (Mobile Legends)</option>
-              <option value="PUBG">PUBG Mobile</option>
-              <option value="FOOTBALL">Football / Futsal</option>
+              <option value="MLBB">MLBB</option>
+              <option value="PUBG">PUBG</option>
+              <option value="FOOTBALL">Football</option>
             </select>
           </div>
 
           <div>
             <label for="tourneyDeadline" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Registration Deadline (စာရင်းပိတ်မည့်ရက်)
+              Registration Deadline
             </label>
             <input
               id="tourneyDeadline"
               type="datetime-local"
               bind:value={tourneyDeadline}
               required
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-purple-500"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none"
             />
           </div>
 
@@ -4194,9 +3988,6 @@
     </div>
   {/if}
 
-  <!-- ================================= -->
-  <!-- MODAL 4: SIGN IN / SIGN UP (WITH UNIQUE TNT-XXXX STUDENT ID) -->
-  <!-- ================================= -->
   {#if showAuthModal}
     <div class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
       <div class="bg-[#0b0f1a] border border-purple-500/30 w-full max-w-md rounded-3xl p-8 relative shadow-2xl">
@@ -4211,18 +4002,15 @@
         <h3 class="text-2xl font-bold text-white mb-2">
           {isLoginMode ? 'Sign In to UIT Arena' : 'Create Student Account'} 🎮
         </h3>
-        <p class="text-slate-400 text-sm mb-6">
-          Squad တည်ထောင်ရန်နှင့် ပြိုင်ပွဲများတွင် စာရင်းသွင်းရန် အကောင့်ဝင်ပါ။
-        </p>
 
         {#if errorMessage}
-          <div class="bg-red-500/10 border border-red-500/50 text-red-400 text-sm p-3.5 rounded-xl mb-4 leading-relaxed">
+          <div class="bg-red-500/10 border border-red-500/50 text-red-400 text-xs p-3.5 rounded-xl mb-4 leading-relaxed">
             ⚠️ {errorMessage}
           </div>
         {/if}
 
         {#if successMessage}
-          <div class="bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 text-sm p-3.5 rounded-xl mb-4 leading-relaxed">
+          <div class="bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 text-xs p-3.5 rounded-xl mb-4 leading-relaxed">
             ✅ {successMessage}
           </div>
         {/if}
@@ -4231,21 +4019,21 @@
           {#if !isLoginMode}
             <div>
               <label for="fullName" class="block text-xs font-bold uppercase text-slate-400 mb-1.5">
-                Full Name (အမည်)
+                Full Name
               </label>
               <input
                 id="fullName"
                 type="text"
                 bind:value={authFullName}
                 required
-                placeholder="ဥပမာ - Kyal Sin"
-                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-purple-500"
+                placeholder="Kyal Sin"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none"
               />
             </div>
 
             <div>
               <label for="studentId" class="block text-xs font-bold uppercase text-purple-300 mb-1.5">
-                Student ID (Unique • တစ်ယောက်နှင့်တစ်ယောက် တူ၍မရပါ)
+                Student ID (TNT-XXXX)
               </label>
               <input
                 id="studentId"
@@ -4253,7 +4041,7 @@
                 bind:value={authStudentId}
                 required
                 placeholder="TNT-XXXX"
-                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm font-mono uppercase outline-none focus:border-purple-500"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm font-mono uppercase outline-none"
               />
             </div>
           {/if}
@@ -4268,7 +4056,7 @@
               bind:value={authEmail}
               required
               placeholder="student@uit.edu.mm"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-purple-500"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none"
             />
           </div>
 
@@ -4283,7 +4071,7 @@
               required
               minlength="6"
               placeholder="••••••••"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-purple-500"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none"
             />
           </div>
 
@@ -4328,5 +4116,4 @@
       </div>
     </div>
   {/if}
-
 </div>
